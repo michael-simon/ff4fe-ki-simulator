@@ -147,27 +147,26 @@ pool = list(main_ki_positions.keys())
     Randomly assign key items among the slots in the pool.
     The remaining unassigned slots in the pool, as well as the reserved slots from the summon/moon/trap steps, will receive non-key-item rewards.
 """
-for trials in range(1,10000):
-    now_statistics = copy.copy(single_run_statistics)
-    possible_extras = list(summon_ki_positions.keys()) + list(moon_ki_positions.keys())
-    N = random.random()
-    K = 0
-    while (N < (1 / math.pow(2,(K+1)))) and (K < math.floor(len(possible_extras)/2)):
-        K += 1
-    K += min(math.ceil(len(possible_extras)/2), len(possible_extras))
-    now_statistics["Optional Spots In Pool"] = K
-    spots_chosen = random.sample(possible_extras, K)
-    final_pool = pool + spots_chosen
-    final_dict  = copy.copy(main_ki_positions)
-    final_dict.update(summon_ki_positions)
-    final_dict.update(moon_ki_positions)
-    #print(final_pool)
-    dependencies = {}
-    key_item_number = 1
+for trials in range(1,100000):
     valid = False
     while valid == False:
-        selections = random.sample(final_pool, key_item_count)
+        now_statistics = copy.copy(single_run_statistics)
+        possible_extras = list(summon_ki_positions.keys()) + list(moon_ki_positions.keys())
+        N = random.random()
+        K = 0
+        while (N < (1 / math.pow(2,(K+1)))) and (K < math.floor(len(possible_extras)/2)):
+            K += 1
+        K += min(math.ceil(len(possible_extras)/2), len(possible_extras))
+        now_statistics["Optional Spots In Pool"] = K
+        spots_chosen = random.sample(possible_extras, K)
+        final_pool = pool + spots_chosen
+        final_dict  = copy.copy(main_ki_positions)
+        final_dict.update(summon_ki_positions)
+        final_dict.update(moon_ki_positions)
+        #print(final_pool)
+        dependencies = {}
         key_item_number = 1
+        selections = random.sample(final_pool, key_item_count)
         dependencies = {}
         valid = True
         for key in selections:
