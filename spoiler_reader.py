@@ -1,11 +1,15 @@
+import lark
 from lark import Lark
+from lark.visitors import Interpreter
+import data_types as types
+
 
 spoiler_grammar = """
    start : headed_section+
 
    headed_section: SEPERATOR section
    SEPERATOR: /\-+/
-   section: initial | kis | quests | characters | objectives | bosses | treasure | shops | fusoya | misc | starterkit
+   ?section: initial | kis | quests | characters | objectives | bosses | treasure | shops | fusoya | misc | starterkit
 
    initial: "VERSION: " version "FLAGS: " flags "BINFLAGS: " binflags
    version: "v" DIGIT "." DIGIT "." DIGIT 
@@ -21,20 +25,22 @@ spoiler_grammar = """
    dots.10: "." "."+ 
 
    kis: "KEY ITEM LOCATIONS (and Pass if Pkey)" kiline+
-   kiline: ki dots itemslot 
-   ki: "Package" | "SandRuby" | "Baron Key" | "TwinHarp" | "Earth Crystal" | "Magma Key" | "Tower Key" | "Hook" | "Luca Key" | "Darkness Crystal" | "Rat Tail" | "Pan" | "Crystal" | "Legend Sword" | "Adamant" | "Spoon" | "Pink Tail" | "Pass"    
+   kiline: KI dots itemslot 
+   KI: "Package" | "SandRuby" | "Baron Key" | "TwinHarp" | "Earth Crystal" | "Magma Key" | "Tower Key" | "Hook" | "Luca Key" | "Darkness Crystal" | "Rat Tail" | "Pan" | "Crystal" | "Legend Sword" | "Adamant" | "Spoon" | "Pink Tail" | "Pass"    
    itemslot: REGION location ["(" slotdesc "slot)"]
-   location: LOCTERM | "altar" DIGIT | "pillar chest" DIGIT
+   ?location: LOCTERM | altar | pillar 
+   altar: "altar" DIGIT
+   pillar: "pillar chest" DIGIT
    LOCTERM: "item" | "chest item" | "queen item" | "king item" | "destruction item" | "completion" | "reward item" | "trade item" 
    REGION: "Agart" | "Found Yang" | "Lower Bab-il" | "Lunar Subterrane" | "Town of Monsters" | "Antlion Nest" | "Starting" | "Super Cannon" | "Baron Castle" | "Dwarf Castle/Luca" | "Objective" | "Baron Inn" | "Defend Fabul" | "Sealed Cave" | "Baron Basement" | "Cave Magnes" | "Zot" | "Pan" | "Rat Tail" | "D.Mist/Rydia's Mom" | "Wake Yang" | "Cave Bahamut" | "Pink Tail" | "Mist/Package" | "Watery Pass" | "Damcyan" | "Kaipo/SandRuby" | "Mt. Hobs" | "Mysidia" | "Dwarf Castle" | "Lunar Palace" | "Giant of Bab-il" | "Antlion Cave" | "Baron Chocobo Forest" | "Baron Town" | "Black Chocobo Forest" | "Cave Eblana" | "Cave Eblan" | "Eblan Castle" | "Fabul Chocobo Forest" | "Fabul" | "Island Chocobo Forest" | "Kaipo" | "Kokkol's House" | "Land of Monsters" | "Lunar Path" | "Mist Cave" | "Mist Village" | "Mt. Ordeals Chocobo Forest" | "Mt. Ordeals" | "Old Water-way" | "Silvera" | "Sylvan Cave" | "Tomra" | "Toroia Castle" | "Toroia South Chocobo Forest" | "Toroia Town" | "Tower of Bab-il (lower)" | "Tower of Bab-il (upper)" | "Tower of Zot" | "Waterfall" | "Baron" | "Mist" | "Toroia" | "Feymarch" | "Smithy" | "Moon"
    slotdesc: "Pan" | "Tower Key" | "White Spear" | "Asura" | "Ribbon" | "Odin" | "Spoon" | "Sylph" | "Levia" | "Murasame" | "Crystal Sword" | "Masamune"
    
    quests: "QUEST REWARDS" questline+
-   questline: itemslot dots (ki | ITEM)
+   questline: itemslot dots (KI | ITEM)
 
    characters: "CHARACTERS" charline+
-   charline: REGION "character" [DIGIT] dots character
-   character: WORD
+   charline: REGION "character" [DIGIT] dots CHARACTER 
+   CHARACTER: "Cecil" | "Rosa" | "Kain" | "Rydia" | "Palom" | "Porom" | "Tellah" | "Yang" | "Cid" | "Edge" | "FuSoYa" | "Edward"
 
    objectives: "OBJECTIVES" objectiveline+
    objectiveline: INT "." objective
@@ -77,7 +83,7 @@ spoiler_grammar = """
    amount: INT
 
    WORD: CHAR+ 
-   CHAR: "a".."z" | "A".."Z" | "0".."9" 
+   CHAR: "a".."z" | "A".."Z" | "0".."9" | "'" | "-" | "."
 
    %import common.DIGIT 
    %import common.UCASE_LETTER
@@ -86,10 +92,78 @@ spoiler_grammar = """
    %import common.WS
    %ignore WS
 """
+class SpoilerHandling(Interpreter):
+  def __init__(self, assignment, session):
+      self.assignment = types.Assignment(filename=assignment)
+      self.session = session
+      self.session.add(self.assignment)
 
+  def accessOrCreate(self, t, value):
+      retval = self.session.query(t).filter(t.name==value).first()
+      if not retval:
+          retval = t(name=value)
+          self.session.add(retval)
+      return retval
+  
+  def start(self, tree): 
+      print(tree.data)
+      self.visit_children(tree)
+
+  def headed_section(self, tree):
+      print(tree.data)
+      self.visit_children(tree)
+
+  def initial(self, tree):
+      print(tree.data)
+      self.visit_children(tree)
+
+  def kis(self, tree):
+      self.visit_children(tree)
+
+  def kiline(self, tree):
+      ki = self.accessOrCreate(types.KeyItem, tree.children[0])
+      islot = self.visit(tree.children[2])
+      self.session.add(types.KeyItemAssignment(assignment=self.assignment, slot=islot, ki=ki))
+
+  def itemslot(self, tree):
+      region = self.accessOrCreate(types.Region, tree.children[0])
+      if type(tree.children[1]) != lark.Token:
+          locationText = self.visit(tree.children[1])
+      else:
+          locationText = tree.children[1]
+
+      location = self.accessOrCreate(types.Location, locationText)
+      islot = types.ItemSlot(region=region, location=location)
+      self.session.add(islot)
+      return islot
+
+  def altar(self, tree):
+      return "altar " + tree.children[0]
+
+  def pillar(self, tree):
+      return "pillar " + tree.children[0] 
+      
+
+#WriteTreeToDB(Interpreter):
+    
 
 if __name__ == "__main__":
-    spoiler_parser = Lark(spoiler_grammar, start="start")
-    with open("40000spoilers/test00000.spoiler") as f:
-        tree = spoiler_parser.parse(f.read())
-        print(tree)
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    engine = create_engine('sqlite:///test.db', echo=True)
+    types.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    for i in range(0,1):
+        spoiler_parser = Lark(spoiler_grammar, start="start")
+        filename = "40000spoilers/test{:0>5}.spoiler".format(i)
+        with open(filename) as f:
+            try:
+                tree = spoiler_parser.parse(f.read())
+                print(tree)
+                SpoilerHandling(assignment=filename, session=session).visit(tree)
+                session.commit()
+    #            print("Success: {}".format(i), flush=True)
+            except Exception as e:
+                print("Failure: {}{}".format(e,i), flush=True)
+          
